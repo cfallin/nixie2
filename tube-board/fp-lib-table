@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name nixies-us)(type Eagle)(uri /home/cfallin/nixie2/tube-board/nixies-us.lbr)(options "")(descr ""))
+)

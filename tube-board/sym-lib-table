@@ -1,0 +1,3 @@
+(sym_lib_table
+  (lib (name nixies-us)(type Legacy)(uri /home/cfallin/nixie2/tube-board/nixies-us.lib)(options "")(descr ""))
+)
