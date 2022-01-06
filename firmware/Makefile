@@ -18,10 +18,13 @@ nixie.out: $(OBJS)
 prog: nixie.hex
 	avrdude -c usbtiny -F -p m8 -U flash:w:nixie.hex
 
+.PHONY: prog_noverify
+prog_noverify: nixie.hex
+	avrdude -V -c usbtiny -F -p m8 -U flash:w:nixie.hex
 
 .PHONY: prog_fuses
 prog_fuses:
-	avrdude -c usbtiny -F -p m8 -U lfuse:w:0xd0:m -U hfuse:w:0xd9:m
+	avrdude -c usbtiny -F -p m8 -U lfuse:w:0xdf:m -U hfuse:w:0xd9:m
 
 .PHONY: clean
 clean:

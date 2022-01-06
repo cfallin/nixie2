@@ -24,6 +24,8 @@
 #include <avr/io.h>
 #include <avr/interrupt.h>
 #include <avr/wdt.h>
+#include <string.h>
+#include <ctype.h>
 
 void delay() {
     for (int i = 0; i < 1000; i++) {
@@ -85,40 +87,61 @@ void init_usart() {
     DDRD = 0;
     PORTD = 0;
 
-    UBRRL = 0x01;  // baud divisor 129 (0x0101) --> 9600 baud
-    UBRRH = 0x01;
+    UBRRL = 0x81;  // baud divisor 129 (0x0081) --> 9600 baud
+    UBRRH = 0x00;
     UCSRB = 0x90;  // RX interrupt enable, RX enable
     UCSRC = 0x86;  // 8N1
 }
 
+unsigned char nmea_buf[80];
+int nmea_pos = 0;
+
+int h2 = 0, h1 = 0, m2 = 0, m1 = 0, s2 = 0, s1 = 0;
+
+void nmea_parse(unsigned char* buf, int len) {
+    if (len < 13) {
+        return;
+    }
+    if (isdigit(buf[7]) && isdigit(buf[8]) && isdigit(buf[9]) && isdigit(buf[10]) && isdigit(buf[11]) && isdigit(buf[12])) {
+        h1 = buf[7] - '0';
+        h2 = buf[8] - '0';
+        m1 = buf[9] - '0';
+        m2 = buf[10] - '0';
+        s1 = buf[11] - '0';
+        s2 = buf[12] - '0';
+        nmea_pos = 80;
+    }
+}
+
+void nmea_char(char c) {
+    if (c == '$') {
+        nmea_pos = 0;
+    }
+    if (nmea_pos >= 80) {
+        return;
+    }
+    nmea_buf[nmea_pos++] = c;
+    nmea_parse(nmea_buf, nmea_pos);
+}
+
 ISR(USART_RXC_vect) {
-    uint8_t byte = UDR;
-
-    /*
-    int hundreds = byte / 100;
-    int tens = (byte - 100*hundreds) / 10;
-    int ones = byte % 10;
-
-    display_digits(0xff, 0xff, 0xff, hundreds, tens, ones);
-    */
+    uint8_t status = UCSRA;
+    if (status & 0x10) {
+        return;
+    }
+    if (!(status & 0x80)) {
+        return;
+    }
+    char c = UDR;
+    nmea_char(c);
 }
 
 void enable_int0() {
     GICR |= 0x40;
 }
 
-int counter = 0;
-
-void update_counter() {
-    counter++;
-    if (counter == 10) {
-        counter = 0;
-    }
-    display_digits(counter, 0, 0, 0, 0, 0);
-}
-
 ISR(INT0_vect) {
-    update_counter();
+    // PPS interrupt.
 }
 
 void init_switches() {
@@ -139,24 +162,29 @@ void read_switches() {
     switches = switch_debounce2 | switch_debounce1 | switch_debounce0;
 }
 
+void enable_timer_interrupt() {
+    TIMSK |= (1 << TOIE0);
+    TCCR0 |= (1 << CS02) | (1 << CS00);  // prescale by 1024; overflow after 256 counts; 76.29Hz interrupt at 20MHz xtal
+}
+
+ISR(TIMER0_OVF_vect) {
+    // TODO
+}
+
 int main()
 {
     init_display();
-    //init_usart();
-    //enable_int0();
-    display_digits(1, 2, 3, 4, 5, 6);
+    init_usart();
+    enable_int0();
     init_switches();
+    enable_timer_interrupt();
     sei();
 
+    int pos = 0;
     int state = 0;
     while (1) {
         delay();
         read_switches();
-        if (state == 0 && !(switches & 1)) {
-            update_counter();
-            state = 1;
-        } else if (state == 1 && (switches & 1)) {
-            state = 0;
-        }
+        display_digits(h1, h2, m1, m2, s1, s2);
     }
 }
