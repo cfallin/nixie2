@@ -29,7 +29,6 @@ void delay() {
     for (int i = 0; i < 1000; i++) {
         asm volatile("nop");
     }
-    wdt_reset();
 }
 
 void delay_1s_ish() {
@@ -38,7 +37,7 @@ void delay_1s_ish() {
     }
 }
 
-void init() {
+void init_display() {
     PORTB = 0;
     DDRB = 7;
 }
@@ -48,6 +47,8 @@ void output_digit(int d) {
         d = 1;
     } else if (d == 1) {
         d = 0;
+    } else if (d == 0xff) {
+        d = 15;
     } else {
         d = 11 - d;
     }
@@ -80,23 +81,82 @@ void display_digits(int h1, int h2, int m1, int m2, int s1, int s2) {
     latch_display();
 }
 
+void init_usart() {
+    DDRD = 0;
+    PORTD = 0;
+
+    UBRRL = 0x01;  // baud divisor 129 (0x0101) --> 9600 baud
+    UBRRH = 0x01;
+    UCSRB = 0x90;  // RX interrupt enable, RX enable
+    UCSRC = 0x86;  // 8N1
+}
+
+ISR(USART_RXC_vect) {
+    uint8_t byte = UDR;
+
+    /*
+    int hundreds = byte / 100;
+    int tens = (byte - 100*hundreds) / 10;
+    int ones = byte % 10;
+
+    display_digits(0xff, 0xff, 0xff, hundreds, tens, ones);
+    */
+}
+
+void enable_int0() {
+    GICR |= 0x40;
+}
+
+int counter = 0;
+
+void update_counter() {
+    counter++;
+    if (counter == 10) {
+        counter = 0;
+    }
+    display_digits(counter, 0, 0, 0, 0, 0);
+}
+
+ISR(INT0_vect) {
+    update_counter();
+}
+
+void init_switches() {
+    DDRC = 0;
+    PORTC = 0x3f;
+}
+
+int switch_debounce0 = 0;
+int switch_debounce1 = 0;
+int switch_debounce2 = 0;
+// Active-low (zero bit) for pressed button/flipped switch.
+int switches = 0;
+
+void read_switches() {
+    switch_debounce2 = switch_debounce1;
+    switch_debounce1 = switch_debounce0;
+    switch_debounce0 = PINC;
+    switches = switch_debounce2 | switch_debounce1 | switch_debounce0;
+}
+
 int main()
 {
-    init();
+    init_display();
+    //init_usart();
+    //enable_int0();
+    display_digits(1, 2, 3, 4, 5, 6);
+    init_switches();
+    sei();
 
-    int d = 0;
+    int state = 0;
     while (1) {
-        int d1 = d;
-        int d2 = (d + 1) % 10;
-        int d3 = (d + 2) % 10;
-        int d4 = (d + 3) % 10;
-        int d5 = (d + 4) % 10;
-        int d6 = (d + 5) % 10;
-        display_digits(d1, d2, d3, d4, d5, d6);
-        d++;
-        if (d == 10) {
-            d = 0;
+        delay();
+        read_switches();
+        if (state == 0 && !(switches & 1)) {
+            update_counter();
+            state = 1;
+        } else if (state == 1 && (switches & 1)) {
+            state = 0;
         }
-        delay_1s_ish();
     }
 }

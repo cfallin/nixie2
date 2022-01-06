@@ -21,7 +21,7 @@ prog: nixie.hex
 
 .PHONY: prog_fuses
 prog_fuses:
-	avrdude -c usbtiny -F -p m8 -U lfuse:w:0xd0:m -U hfuse:w:0x99:m
+	avrdude -c usbtiny -F -p m8 -U lfuse:w:0xd0:m -U hfuse:w:0xd9:m
 
 .PHONY: clean
 clean:
