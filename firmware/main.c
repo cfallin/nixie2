@@ -5,6 +5,8 @@
  * Placed under the Apache-2.0 license.
  */
 
+#define TZOFF 8  // negative offset; PST
+
 /* 
  * Assume an ATmega8.
  *
@@ -141,7 +143,7 @@ void enable_int0() {
 }
 
 ISR(INT0_vect) {
-    // PPS interrupt.
+    // PPS (kind of -- needs debounce?).
 }
 
 void init_switches() {
@@ -185,6 +187,11 @@ int main()
     while (1) {
         delay();
         read_switches();
-        display_digits(h1, h2, m1, m2, s1, s2);
+
+        int h = h1*10 + h2;
+        h -= TZOFF;
+        int display_h1 = h / 10;
+        int display_h2 = h % 10;
+        display_digits(display_h1, display_h2, m1, m2, s1, s2);
     }
 }
