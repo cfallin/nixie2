@@ -190,6 +190,9 @@ int main()
 
         int h = h1*10 + h2;
         h -= TZOFF;
+        if (h < 0) {
+            h += 24;
+        }
         int display_h1 = h / 10;
         int display_h2 = h % 10;
         display_digits(display_h1, display_h2, m1, m2, s1, s2);
