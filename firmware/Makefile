@@ -1,4 +1,4 @@
-OBJS = main.o
+OBJS = main.o util.o gps.o display.o switches.o timer.o
 
 .PHONY: all
 all: nixie.hex
@@ -13,7 +13,7 @@ nixie.hex: nixie.out
 
 nixie.out: $(OBJS)
 	$(CC) $(CFLAGS) -o nixie.out $(OBJS)
-	
+
 .PHONY: prog
 prog: nixie.hex
 	avrdude -c usbtiny -F -p m8 -U flash:w:nixie.hex

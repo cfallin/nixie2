@@ -5,8 +5,6 @@
  * Placed under the Apache-2.0 license.
  */
 
-#define TZOFF 8  // negative offset; PST
-
 /* 
  * Assume an ATmega8.
  *
@@ -23,154 +21,116 @@
  * PD0..PD7 are expansion port.
  */
 
-#include <avr/io.h>
 #include <avr/interrupt.h>
-#include <avr/wdt.h>
-#include <string.h>
-#include <ctype.h>
 
-void delay() {
-    for (int i = 0; i < 1000; i++) {
-        asm volatile("nop");
+#include "nixie.h"
+
+#define EXPECTED_TIMER_TICKS_PER_SEC 78125 // 20MHz / 256
+
+#define DEFAULT_TZ -8  // PST (UTC-8)
+
+int tzoff = DEFAULT_TZ;
+long timer_ticks = 0;
+long hz = EXPECTED_TIMER_TICKS_PER_SEC;
+long hz_staged = 0;
+
+#define DISPLAY_TIME 0
+#define DISPLAY_TZOFF 1
+int display_mode = 0;
+
+#define UI_TIME 0
+#define UI_TO_SET_TZ 1
+#define UI_SET_TZ 2
+#define UI_FROM_SET_TZ 3
+#define UI_SET_TZ_HPLUS 4
+#define UI_SET_TZ_HMINUS 5
+int ui_state = 0;
+
+void do_ui() {
+    switch (ui_state) {
+    case UI_TIME:
+        display_mode = DISPLAY_TIME;
+        if (switches & 8) {
+            ui_state = UI_TO_SET_TZ;
+        }
+        break;
+    case UI_TO_SET_TZ:
+        display_mode = DISPLAY_TIME;
+        if (!(switches & 8)) {
+            ui_state = UI_SET_TZ;
+        }
+        break;
+    case UI_SET_TZ:
+        display_mode = DISPLAY_TZOFF;
+        if (switches & 2) {
+            tzoff++;
+            if (tzoff == 24) {
+                tzoff = 23;
+            }
+            ui_state = UI_SET_TZ_HPLUS;
+        }
+        if (switches & 1) {
+            tzoff--;
+            if (tzoff == -24) {
+                tzoff = -23;
+            }
+            ui_state = UI_SET_TZ_HMINUS;
+        }
+        if (switches & 8) {
+            ui_state = UI_FROM_SET_TZ;
+        }
+        break;
+    case UI_FROM_SET_TZ:
+        display_mode = DISPLAY_TZOFF;
+        if (!(switches & 8)) {
+            ui_state = UI_TIME;
+        }
+        break;
+    case UI_SET_TZ_HPLUS:
+        display_mode = DISPLAY_TZOFF;
+        if (!(switches & 2)) {
+            ui_state = UI_SET_TZ;
+        }
+        break;
+    case UI_SET_TZ_HMINUS:
+        display_mode = DISPLAY_TZOFF;
+        if (!(switches & 1)) {
+            ui_state = UI_SET_TZ;
+        }        
+        break;
     }
 }
 
-void delay_1s_ish() {
-    for (int i = 0; i < 1000; i++) {
-        delay();
+void update_display() {
+    switch (display_mode) {
+    case DISPLAY_TIME: {
+        int h = h1*10 + h2;
+        h += tzoff;
+        if (h < 0) {
+            h += 24;
+        }
+        if (h >= 24) {
+            h -= 24;
+        }
+        int display_h1 = h / 10;
+        int display_h2 = h % 10;
+        display_digits(display_h1, display_h2, m1, m2, s1, s2);
+        break;
     }
-}
-
-void init_display() {
-    PORTB = 0;
-    DDRB = 7;
-}
-
-void output_digit(int d) {
-    if (d == 0) {
-        d = 1;
-    } else if (d == 1) {
-        d = 0;
-    } else if (d == 0xff) {
-        d = 15;
-    } else {
-        d = 11 - d;
+    case DISPLAY_TZOFF:
+        if (tzoff < 0) {
+            int t = -tzoff;
+            int tens = t / 10;
+            int ones = t % 10;
+            display_digits(15, 15, 15, 15, tens, ones);
+        } else {
+            int t = tzoff;
+            int tens = t / 10;
+            int ones = t % 10;
+            display_digits(tens, ones, 15, 15, 15, 15);
+        }
+        break;
     }
-    for (int i = 0; i < 4; i++) {
-        PORTB = (d & 8) ? 2 : 0;
-        delay();
-        PORTB |= 1;
-        delay();
-        d <<= 1;
-    }
-    PORTB = 0;
-}
-
-void latch_display() {
-    PORTB = 4;
-    delay();
-    delay();
-    PORTB = 0;
-    delay();
-    delay();
-}
-
-void display_digits(int h1, int h2, int m1, int m2, int s1, int s2) {
-    output_digit(h2);
-    output_digit(h1);
-    output_digit(m2);
-    output_digit(m1);
-    output_digit(s2);
-    output_digit(s1);
-    latch_display();
-}
-
-void init_usart() {
-    DDRD = 0;
-    PORTD = 0;
-
-    UBRRL = 0x81;  // baud divisor 129 (0x0081) --> 9600 baud
-    UBRRH = 0x00;
-    UCSRB = 0x90;  // RX interrupt enable, RX enable
-    UCSRC = 0x86;  // 8N1
-}
-
-unsigned char nmea_buf[80];
-int nmea_pos = 0;
-
-int h2 = 0, h1 = 0, m2 = 0, m1 = 0, s2 = 0, s1 = 0;
-
-void nmea_parse(unsigned char* buf, int len) {
-    if (len < 13) {
-        return;
-    }
-    if (isdigit(buf[7]) && isdigit(buf[8]) && isdigit(buf[9]) && isdigit(buf[10]) && isdigit(buf[11]) && isdigit(buf[12])) {
-        h1 = buf[7] - '0';
-        h2 = buf[8] - '0';
-        m1 = buf[9] - '0';
-        m2 = buf[10] - '0';
-        s1 = buf[11] - '0';
-        s2 = buf[12] - '0';
-        nmea_pos = 80;
-    }
-}
-
-void nmea_char(char c) {
-    if (c == '$') {
-        nmea_pos = 0;
-    }
-    if (nmea_pos >= 80) {
-        return;
-    }
-    nmea_buf[nmea_pos++] = c;
-    nmea_parse(nmea_buf, nmea_pos);
-}
-
-ISR(USART_RXC_vect) {
-    uint8_t status = UCSRA;
-    if (status & 0x10) {
-        return;
-    }
-    if (!(status & 0x80)) {
-        return;
-    }
-    char c = UDR;
-    nmea_char(c);
-}
-
-void enable_int0() {
-    GICR |= 0x40;
-}
-
-ISR(INT0_vect) {
-    // PPS (kind of -- needs debounce?).
-}
-
-void init_switches() {
-    DDRC = 0;
-    PORTC = 0x3f;
-}
-
-int switch_debounce0 = 0;
-int switch_debounce1 = 0;
-int switch_debounce2 = 0;
-// Active-low (zero bit) for pressed button/flipped switch.
-int switches = 0;
-
-void read_switches() {
-    switch_debounce2 = switch_debounce1;
-    switch_debounce1 = switch_debounce0;
-    switch_debounce0 = PINC;
-    switches = switch_debounce2 | switch_debounce1 | switch_debounce0;
-}
-
-void enable_timer_interrupt() {
-    TIMSK |= (1 << TOIE0);
-    TCCR0 |= (1 << CS02) | (1 << CS00);  // prescale by 1024; overflow after 256 counts; 76.29Hz interrupt at 20MHz xtal
-}
-
-ISR(TIMER0_OVF_vect) {
-    // TODO
 }
 
 int main()
@@ -187,14 +147,73 @@ int main()
     while (1) {
         delay();
         read_switches();
-
-        int h = h1*10 + h2;
-        h -= TZOFF;
-        if (h < 0) {
-            h += 24;
-        }
-        int display_h1 = h / 10;
-        int display_h2 = h % 10;
-        display_digits(display_h1, display_h2, m1, m2, s1, s2);
+        do_ui();
+        update_display();
     }
+}
+
+void do_increment_1s() {
+    s2++;
+    if (s2 < 10) {
+        return;
+    }
+    
+    s2 = 0;
+    s1++;
+    if (s1 < 6) {
+        return;
+    }
+
+    s1 = 0;
+    m2++;
+    if (m2 < 10) {
+        return;
+    }
+
+    m2 = 0;
+    m1++;
+    if (m1 < 6) {
+        return;
+    }
+
+    m1 = 0;
+    h2++;
+    if ((h1 < 2 && h2 < 10) || (h1 == 2 && h2 < 4)) {
+        return;
+    }
+
+    h2 = 0;
+    h1++;
+    if (h1 < 3) {
+        return;
+    }
+
+    h1 = 0;
+}
+
+void do_pps() {
+    if (hz_staged > 0) {
+        hz = hz_staged;
+    }
+    hz_staged = timer_ticks;
+    if (timer_ticks < hz) {
+        do_increment_1s();
+    }
+    timer_ticks = 0;
+}
+
+void do_timer_int() {
+    timer_ticks++;
+    if (timer_ticks == hz) {
+        do_increment_1s();
+    }
+}
+
+void do_gps_time(int _h1, int _h2, int _m1, int _m2, int _s1, int _s2) {
+    h1 = _h1;
+    h2 = _h2;
+    m1 = _m1;
+    m2 = _m2;
+    s1 = _s1;
+    s2 = _s2;
 }
