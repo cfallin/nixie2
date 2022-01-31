@@ -152,61 +152,10 @@ int main()
     }
 }
 
-void do_increment_1s() {
-    s2++;
-    if (s2 < 10) {
-        return;
-    }
-    
-    s2 = 0;
-    s1++;
-    if (s1 < 6) {
-        return;
-    }
-
-    s1 = 0;
-    m2++;
-    if (m2 < 10) {
-        return;
-    }
-
-    m2 = 0;
-    m1++;
-    if (m1 < 6) {
-        return;
-    }
-
-    m1 = 0;
-    h2++;
-    if ((h1 < 2 && h2 < 10) || (h1 == 2 && h2 < 4)) {
-        return;
-    }
-
-    h2 = 0;
-    h1++;
-    if (h1 < 3) {
-        return;
-    }
-
-    h1 = 0;
-}
-
 void do_pps() {
-    if (hz_staged > 0) {
-        hz = hz_staged;
-    }
-    hz_staged = timer_ticks;
-    if (timer_ticks < hz) {
-        do_increment_1s();
-    }
-    timer_ticks = 0;
 }
 
 void do_timer_int() {
-    timer_ticks++;
-    if (timer_ticks == hz) {
-        do_increment_1s();
-    }
 }
 
 void do_gps_time(int _h1, int _h2, int _m1, int _m2, int _s1, int _s2) {
