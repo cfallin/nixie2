@@ -27,76 +27,208 @@
 
 #define EXPECTED_TIMER_TICKS_PER_SEC 78125 // 20MHz / 256
 
-#define DEFAULT_TZ -8  // PST (UTC-8)
-
-int tzoff = DEFAULT_TZ;
 long timer_ticks = 0;
 long hz = EXPECTED_TIMER_TICKS_PER_SEC;
-long hz_staged = 0;
+uint8_t time_h = 0, time_m = 0, time_s = 0;
 
 #define DISPLAY_TIME 0
-#define DISPLAY_TZOFF 1
+#define DISPLAY_SET 1
+#define DISPLAY_CAL 2
 int display_mode = 0;
 
 #define UI_TIME 0
-#define UI_TO_SET_TZ 1
-#define UI_SET_TZ 2
-#define UI_FROM_SET_TZ 3
-#define UI_SET_TZ_HPLUS 4
-#define UI_SET_TZ_HMINUS 5
+#define UI_TO_SET 1
+#define UI_SET 2
+#define UI_SET_NEXT 3
+#define UI_SET_PLUS 4
+#define UI_SET_MINUS 5
+
+#define UI_TO_SET_CAL 6
+#define UI_SET_CAL 7
+#define UI_SET_CAL_NEXT 8
+#define UI_SET_CAL_PLUS 9
+#define UI_SET_CAL_MINUS 10
+#define UI_TO_TIME 11
+
 int ui_state = 0;
+int ui_set_digit = 0;
 
 void do_ui() {
+
     switch (ui_state) {
     case UI_TIME:
         display_mode = DISPLAY_TIME;
         if (switches & 8) {
-            ui_state = UI_TO_SET_TZ;
+            ui_state = UI_TO_SET;
         }
         break;
-    case UI_TO_SET_TZ:
+    case UI_TO_SET:
         display_mode = DISPLAY_TIME;
         if (!(switches & 8)) {
-            ui_state = UI_SET_TZ;
+            ui_state = UI_SET;
+            ui_set_digit = 0;
         }
         break;
-    case UI_SET_TZ:
-        display_mode = DISPLAY_TZOFF;
-        if (switches & 2) {
-            tzoff++;
-            if (tzoff == 24) {
-                tzoff = 23;
-            }
-            ui_state = UI_SET_TZ_HPLUS;
-        }
-        if (switches & 1) {
-            tzoff--;
-            if (tzoff == -24) {
-                tzoff = -23;
-            }
-            ui_state = UI_SET_TZ_HMINUS;
-        }
+    case UI_SET:
+        display_mode = DISPLAY_SET;
         if (switches & 8) {
-            ui_state = UI_FROM_SET_TZ;
+            ui_state = UI_TO_SET_CAL;
+        } else if (switches & 4) {
+            ui_set_digit++;
+            if (ui_set_digit == 3) {
+                ui_set_digit = 0;
+            }
+            ui_state = UI_SET_NEXT;
+        } else if (switches & 2) {
+            switch (ui_set_digit) {
+                case 0:
+                    time_h++;
+                    if (time_h == 24) {
+                        time_h = 0;
+                    }
+                    break;
+                case 1:
+                    time_m++;
+                    if (time_m == 60) {
+                        time_m = 0;
+                    }
+                    break;
+                case 2:
+                    time_s++;
+                    if (time_s == 60) {
+                        time_s = 0;
+                    }
+                    break;
+            }
+            ui_state = UI_SET_PLUS;
+        } else if (switches & 1) {
+            switch (ui_set_digit) {
+                case 0:
+                    if (time_h == 0) {
+                        time_h = 24;
+                    }
+                    time_h--;
+                    break;
+                case 1:
+                    if (time_m == 0) {
+                        time_m = 60;
+                    }
+                    time_m--;
+                    break;
+                case 2:
+                    if (time_s == 0) {
+                        time_s = 60;
+                    }
+                    time_s--;
+                    break;
+            }
+            ui_state = UI_SET_MINUS;
         }
         break;
-    case UI_FROM_SET_TZ:
-        display_mode = DISPLAY_TZOFF;
+    case UI_SET_NEXT:
+        display_mode = DISPLAY_SET;
+        if (!(switches & 4)) {
+            ui_state = UI_SET;
+        }
+        break;
+    case UI_SET_PLUS:
+        display_mode = DISPLAY_SET;
+        if (switches & 1) {
+            switch (ui_set_digit) {
+                case 0:
+                    time_h = 0;
+                    break;
+                case 1:
+                    time_m = 0;
+                    break;
+                case 2:
+                    time_s = 0;
+                    break;
+            }
+        } else if (!(switches & 2)) {
+            ui_state = UI_SET;
+        }
+        break;
+    case UI_SET_MINUS:
+        display_mode = DISPLAY_SET;
+        if (switches & 2) {
+            switch (ui_set_digit) {
+                case 0:
+                    time_h = 0;
+                    break;
+                case 1:
+                    time_m = 0;
+                    break;
+                case 2:
+                    time_s = 0;
+                    break;
+            }
+        } else if (!(switches & 1)) {
+            ui_state = UI_SET;
+        }
+        break;
+    case UI_TO_SET_CAL:
+        display_mode = DISPLAY_SET;
+        if (!(switches & 8)) {
+            ui_state = UI_SET_CAL;
+            ui_set_digit = 0;
+        }
+        break;
+    case UI_SET_CAL:
+        display_mode = DISPLAY_CAL;
+        if (switches & 8) {
+            ui_state = UI_TO_TIME;
+        } else if (switches & 4) {
+            ui_set_digit++;
+            if (ui_set_digit == 5) {
+                ui_set_digit = 0;
+            }
+            ui_state = UI_SET_CAL_NEXT;
+        } else if (switches & 2) {
+            int amt = 1;
+            for (int i = 0; i < (4 - ui_set_digit); i++) {
+                amt *= 10;
+            }
+            hz += amt;
+            if (hz > 100000) {
+                hz -= 100000;
+            }
+            ui_state = UI_SET_CAL_PLUS;
+        } else if (switches & 1) {
+            int amt = 1;
+            for (int i = 0; i < (4 - ui_set_digit); i++) {
+                amt *= 10;
+            }
+            hz -= amt;
+            if (hz < amt) {
+                hz += 100000;
+            }
+            ui_state = UI_SET_CAL_MINUS;
+        }
+        break;
+    case UI_SET_CAL_NEXT:
+        display_mode = DISPLAY_CAL;
+        if (!(switches & 4)) {
+            ui_state = UI_SET_CAL;
+        }
+        break;
+    case UI_SET_CAL_PLUS:
+        display_mode = DISPLAY_CAL;
+        if (!(switches & 2)) {
+            ui_state = UI_SET_CAL;
+        }
+        break;
+    case UI_SET_CAL_MINUS:
+        display_mode = DISPLAY_CAL;
+        if (!(switches & 1)) {
+            ui_state = UI_SET_CAL;
+        }
+        break;
+    case UI_TO_TIME:
+        display_mode = DISPLAY_CAL;
         if (!(switches & 8)) {
             ui_state = UI_TIME;
         }
-        break;
-    case UI_SET_TZ_HPLUS:
-        display_mode = DISPLAY_TZOFF;
-        if (!(switches & 2)) {
-            ui_state = UI_SET_TZ;
-        }
-        break;
-    case UI_SET_TZ_HMINUS:
-        display_mode = DISPLAY_TZOFF;
-        if (!(switches & 1)) {
-            ui_state = UI_SET_TZ;
-        }        
         break;
     }
 }
@@ -104,40 +236,59 @@ void do_ui() {
 void update_display() {
     switch (display_mode) {
     case DISPLAY_TIME: {
-        int h = h1*10 + h2;
-        h += tzoff;
-        if (h < 0) {
-            h += 24;
-        }
-        if (h >= 24) {
-            h -= 24;
-        }
-        int display_h1 = h / 10;
-        int display_h2 = h % 10;
-        display_digits(display_h1, display_h2, m1, m2, s1, s2);
+        display_digits(time_h / 10, time_h % 10, time_m / 10, time_m % 10, time_s / 10, time_s % 10);
         break;
     }
-    case DISPLAY_TZOFF:
-        if (tzoff < 0) {
-            int t = -tzoff;
-            int tens = t / 10;
-            int ones = t % 10;
-            display_digits(15, 15, 15, 15, tens, ones);
-        } else {
-            int t = tzoff;
-            int tens = t / 10;
-            int ones = t % 10;
-            display_digits(tens, ones, 15, 15, 15, 15);
+    case DISPLAY_SET: {
+        int second_half_second = timer_ticks > (hz / 2);
+        int h1 = 15, h2 = 15, m1 = 15, m2 = 15, s1 = 15, s2 = 15;
+
+        if (ui_set_digit != 0 || !second_half_second) {
+            h1 = time_h / 10;
+            h2 = time_h % 10;
         }
+        if (ui_set_digit != 1 || !second_half_second) {
+            m1 = time_m / 10;
+            m2 = time_m % 10;
+        }
+        if (ui_set_digit != 2 || !second_half_second) {
+            s1 = time_s / 10;
+            s2 = time_s % 10;
+        }
+        display_digits(h1, h2, m1, m2, s1, s2);
         break;
+    }
+    case DISPLAY_CAL: {
+        int second_half_second = timer_ticks > (hz / 2);
+        int d1 = 15, d2 = 15, d3 = 15, d4 = 15, d5 = 15;
+
+        if (ui_set_digit != 0 || !second_half_second) {
+            d1 = (hz / 10000) % 10;
+        }
+        if (ui_set_digit != 1 || !second_half_second) {
+            d2 = (hz / 1000) % 10;
+        }
+        if (ui_set_digit != 2 || !second_half_second) {
+            d3 = (hz / 100) % 10;
+        }
+        if (ui_set_digit != 3 || !second_half_second) {
+            d4 = (hz / 10) % 10;
+        }
+        if (ui_set_digit != 4 || !second_half_second) {
+            d5 = hz % 10;
+        }
+        display_digits(15, d1, d2, d3, d4, d5);
+    }
     }
 }
 
 int main()
 {
     init_display();
+#ifdef GPS
     init_usart();
     enable_int0();
+#endif
     init_switches();
     enable_timer_interrupt();
     sei();
@@ -155,14 +306,36 @@ int main()
 void do_pps() {
 }
 
+void do_second() {
+    time_s++;
+    if (time_s == 60) {
+        time_s = 0;
+        time_m++;
+    }
+    if (time_m == 60) {
+        time_m = 0;
+        time_h++;
+    }
+    if (time_h == 24) {
+        time_h = 0;
+    }
+}
+
 void do_timer_int() {
+    timer_ticks++;
+    if (timer_ticks >= hz) {
+        timer_ticks = 0;
+        do_second();
+    }
 }
 
 void do_gps_time(int _h1, int _h2, int _m1, int _m2, int _s1, int _s2) {
+#ifdef GPS
     h1 = _h1;
     h2 = _h2;
     m1 = _m1;
     m2 = _m2;
     s1 = _s1;
     s2 = _s2;
+#endif
 }
