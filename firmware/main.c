@@ -285,13 +285,11 @@ void update_display() {
 int main()
 {
     init_display();
-#ifdef GPS
     init_usart();
-    enable_int0();
-#endif
     init_switches();
     enable_timer_interrupt();
     sei();
+
 
     int pos = 0;
     int state = 0;
@@ -301,9 +299,6 @@ int main()
         do_ui();
         update_display();
     }
-}
-
-void do_pps() {
 }
 
 void do_second() {
@@ -329,13 +324,9 @@ void do_timer_int() {
     }
 }
 
-void do_gps_time(int _h1, int _h2, int _m1, int _m2, int _s1, int _s2) {
-#ifdef GPS
-    h1 = _h1;
-    h2 = _h2;
-    m1 = _m1;
-    m2 = _m2;
-    s1 = _s1;
-    s2 = _s2;
-#endif
+void do_serial_time(int h, int m, int s) {
+    time_h = h;
+    time_m = m;
+    time_s = s;
+    timer_ticks = 0;
 }

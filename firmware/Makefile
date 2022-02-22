@@ -1,4 +1,4 @@
-OBJS = main.o util.o gps.o display.o switches.o timer.o
+OBJS = main.o util.o serial.o display.o switches.o timer.o
 
 .PHONY: all
 all: nixie.hex
